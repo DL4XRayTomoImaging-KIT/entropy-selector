@@ -2,3 +2,4 @@ tqdm
 matplotlib
 scikit-image
 numpy
+git+https://github.com/ufo-kit/concert
