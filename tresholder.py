@@ -40,7 +40,10 @@ def get_embryo_thresholds(img, canny_alpha=0.75,
     if do_selection:
         img = label(img)
         area, count = np.unique(img, return_counts=True)
-        biggest_area = area[area!=0][np.argmax(count[area!=0])]
+        if len(count) > 1:
+            biggest_area = area[area!=0][np.argmax(count[area!=0])]
+        else:
+            biggest_area = 0
         img = img == biggest_area
 
     return img
@@ -105,46 +108,53 @@ def get_two_crops(sequence_reader,
 
     return (final_x, y_00, y_90)
 
-def plot_random_15(images_list, canny_alpha=0.2, rescale_coefficient=0.1,
-                              threshold=0.3, do_selection=True, line_removal=False, plot_to_file=None):
-    list_of_frames_to_use = np.random.choice(np.array(images_list), size=15)
-
+def plot_15_with_bb(images_list, names_list, multiboxes_list, meta_information='', plot_to_file=None):
     fig, axes = plt.subplots(ncols=5, nrows=3, figsize=(25, 15))
 
-    for i, volume_addr in tqdm(enumerate(list_of_frames_to_use), total=len(list_of_frames_to_use)):
-
-        measurement_name = list_of_frames_to_use[i].split('/')[-3]
-
-        projections_non_corrected = TiffSequenceReader(list_of_frames_to_use[i])
-
+    for i, (image, name, box) in tqdm(enumerate(zip(images_list, names_list, multiboxes_list))):
         ca = axes[i//5][i%5]
-        ca.set_title(measurement_name)
-        ca.imshow(equalize_hist(projections_non_corrected.read(0)), cmap='gray')
-        try:
-            multi_bbox = get_two_crops(projections_non_corrected, canny_alpha,
-                                            rescale_coefficient=rescale_coefficient,
-                                            threshold=threshold,
-                                            do_selection=do_selection,
-                                            line_removal=line_removal)
-            ca.add_patch(recto_by_coords((multi_bbox[0], multi_bbox[1])))
-        except Exception as e:
-            print(e)
+        ca.set_title(name)
+        ca.imshow(equalize_hist(image), cmap='gray')
+        ca.add_patch(recto_by_coords((box[0], box[1])))
         ca.set_xticks([])
         ca.set_yticks([])
 
-    plt.tight_layout()
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
+#    plt.subplots_adjust(top=1.5)
+    plt.suptitle(meta_information)
     if plot_to_file is not None:
         plt.savefig(plot_to_file)
     else:
         plt.show()
 
-def produce_files_with_thresholds(images_list, canny_alpha=0.2, rescale_coefficient=0.1,
-                              threshold=0.3, do_selection=True, line_removal=False, rewrite=False, filename='embryo_area.txt'):
-    previously_done = []
-    processed = []
-    failed = []
+get_volume_name = lambda addr: addr.split('/')[-2]
+get_meta_str = lambda **kwargs: str(kwargs)
 
-    for volume_addr in tqdm(images_list):
+def plot_random_15(images_list, canny_alpha=0.2, rescale_coefficient=0.1,
+                              threshold=0.3, do_selection=True, line_removal=False, plot_to_file=None):
+    list_of_frames_to_use = np.random.choice(np.array(images_list), size=15)
+
+    images_list, names_list, multiboxes_list = [], [], []
+    for i, volume_addr in tqdm(enumerate(list_of_frames_to_use), total=len(list_of_frames_to_use)):
+        names_list.append(get_volume_name(list_of_frames_to_use[i]))
+        seq_reader = TiffSequenceReader(list_of_frames_to_use[i])
+        images_list.append(seq_reader.read(0))
+        multiboxes_list.append(get_two_crops(seq_reader, canny_alpha,
+                                             rescale_coefficient=rescale_coefficient,
+                                             threshold=threshold,
+                                             do_selection=do_selection,
+                                             line_removal=line_removal))
+
+    meta_information = get_meta_str(canny_alpha=canny_alpha, rescale_coefficient=rescale_coefficient, threshold=threshold, do_selection=do_selection, line_removal=line_removal)
+
+    plot_15_with_bb(images_list, names_list, multiboxes_list, meta_information=meta_information, plot_to_file=plot_to_file)
+
+def produce_files_with_thresholds(address_list, canny_alpha=0.2, rescale_coefficient=0.1,
+                              threshold=0.3, do_selection=True, line_removal=False, rewrite=False, filename='embryo_area.txt', observe_filename=None):
+
+    images_list, names_list, multiboxes_list = [], [], []
+
+    for volume_addr in tqdm(address_list):
         path_to_save = os.path.abspath(os.path.join(volume_addr, '..', filename))
 
         if os.path.exists(path_to_save):
@@ -152,22 +162,34 @@ def produce_files_with_thresholds(images_list, canny_alpha=0.2, rescale_coeffici
             if not rewrite:
                 continue
 
-        try:
-            projections_loader = TiffSequenceReader(volume_addr)
-            multi_bbox = get_two_crops(projections_loader, canny_alpha,
-                                            rescale_coefficient=rescale_coefficient,
-                                            threshold=threshold,
-                                            do_selection=do_selection,
-                                            line_removal=line_removal)
+        names_list.append(get_volume_name(volume_addr))
+        projections_loader = TiffSequenceReader(volume_addr)
+        multi_bbox = get_two_crops(projections_loader, canny_alpha,
+                                   rescale_coefficient=rescale_coefficient,
+                                   threshold=threshold,
+                                   do_selection=do_selection,
+                                   line_removal=line_removal)
+        images_list.append(projections_loader.read(0))
+        multiboxes_list.append(multi_bbox)
 
-            with open(path_to_save, 'w') as f:
-                print(str(multi_bbox[0])[1:-1], file=f)
-                print(str(multi_bbox[1])[1:-1], file=f)
-                print(str(multi_bbox[2])[1:-1], file=f)
-            processed.append(volume_addr)
-        except Exception as e:
-            failed.append(volume_addr)
-    return previously_done, processed, failed
+        with open(path_to_save, 'w') as f:
+            print(str(multi_bbox[0])[1:-1], file=f)
+            print(str(multi_bbox[1])[1:-1], file=f)
+            print(str(multi_bbox[2])[1:-1], file=f)
+
+    if observe_filename is not None:
+        observe_filename=observe_filename.split('.')
+        observe_filename[0] += '_{}'
+        observe_filename = '.'.join(observe_filename)
+
+        meta_information = get_meta_str(canny_alpha=canny_alpha, rescale_coefficient=rescale_coefficient, threshold=threshold, do_selection=do_selection, line_removal=line_removal)
+
+        for partition in range(int(np.ceil(len(images_list)/15))):
+            plot_15_with_bb(images_list[partition*15:(partition+1)*15],
+                            names_list[partition*15:(partition+1)*15],
+                            multiboxes_list[partition*15:(partition+1)*15],
+                            meta_information=meta_information,
+                            plot_to_file=observe_filename.format(partition))
 
 import argparse
 
@@ -219,5 +241,4 @@ if __name__ == '__main__':
 
     if args.generate_treshold_files:
         print('generating output files for each folder listed')
-
-        produce_files_with_thresholds(filenames, **algo_params, rewrite=args.rewrite, filename=args.output_file)
+        produce_files_with_thresholds(filenames, **algo_params, rewrite=args.rewrite, filename=args.output_file, observe_filename=args.plot_to_file)
