@@ -85,8 +85,9 @@ def get_two_crops(sequence_reader,
                   threshold=0.3,
                   do_selection=True,
                   line_removal=False):
+    total_frames = sequence_reader.num_images
     frame_00 = sequence_reader.read(0)
-    frame_90 = sequence_reader.read(1500)
+    frame_90 = sequence_reader.read(int(total_frames/2))
 
     mask_00 = rescale(get_embryo_thresholds(frame_00,
                                             canny_alpha=canny_alpha,
@@ -210,7 +211,7 @@ if __name__ == '__main__':
     # algorithm parameters
     parser.add_argument('--gaussian-sigma', default=0.2, type=float, help='Sigma for the Gaussian filter before the Canny operator. The more is sigma, the less recall detector have. Default value 0.2.')
     parser.add_argument('--rescale-coefficient', type=float, default=0.1, help='Coefficient of the image rescaling for speed. Used as additional noise removal. Default value 0.1.')
-    parser.add_argument('--threshold', default=0.3, type=float, help='Just thresholding value for the pixel to be considered as part of the embryo.')
+    parser.add_argument('--threshold', default=0.3, type=float, help='Just thresholding value for the pixel to be considered as part of the embryo. Default value 0.3')
     parser.add_argument('--line-removal', const=True, default=False, action='store_const', help='If used will remove the solid lines selected as embryo from processing. Can help with specific noises.')
 
     args = parser.parse_args()
