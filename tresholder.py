@@ -5,7 +5,8 @@ import re
 
 from matplotlib import pyplot as plt
 
-from concert.readers import TiffSequenceReader
+from concert.readers import TiffSequenceReader, SequenceReaderError
+
 
 from skimage.morphology import opening
 from skimage.measure import label
@@ -121,7 +122,6 @@ def plot_15_with_bb(images_list, names_list, multiboxes_list, meta_information='
         ca.set_yticks([])
 
     plt.tight_layout(rect=[0, 0, 1, 0.97])
-#    plt.subplots_adjust(top=1.5)
     plt.suptitle(meta_information)
     if plot_to_file is not None:
         plt.savefig(plot_to_file)
@@ -137,14 +137,17 @@ def plot_random_15(images_list, canny_alpha=0.2, rescale_coefficient=0.1,
 
     images_list, names_list, multiboxes_list = [], [], []
     for i, volume_addr in tqdm(enumerate(list_of_frames_to_use), total=len(list_of_frames_to_use)):
-        names_list.append(get_volume_name(list_of_frames_to_use[i]))
-        seq_reader = TiffSequenceReader(list_of_frames_to_use[i])
-        images_list.append(seq_reader.read(0))
-        multiboxes_list.append(get_two_crops(seq_reader, canny_alpha,
-                                             rescale_coefficient=rescale_coefficient,
-                                             threshold=threshold,
-                                             do_selection=do_selection,
-                                             line_removal=line_removal))
+        try:
+            seq_reader = TiffSequenceReader(list_of_frames_to_use[i])
+            names_list.append(get_volume_name(list_of_frames_to_use[i]))
+            images_list.append(seq_reader.read(0))
+            multiboxes_list.append(get_two_crops(seq_reader, canny_alpha,
+                                                rescale_coefficient=rescale_coefficient,
+                                                threshold=threshold,
+                                                do_selection=do_selection,
+                                                line_removal=line_removal))
+        except SequenceReaderError as e:
+            print(f'empty sequence at {list_of_frames_to_use[i]}, moving on')
 
     meta_information = get_meta_str(canny_alpha=canny_alpha, rescale_coefficient=rescale_coefficient, threshold=threshold, do_selection=do_selection, line_removal=line_removal)
 
@@ -163,8 +166,13 @@ def produce_files_with_thresholds(address_list, canny_alpha=0.2, rescale_coeffic
             if not rewrite:
                 continue
 
+        try:
+            projections_loader = TiffSequenceReader(volume_addr)
+        except SequenceReaderError as err:
+            print(f'Empty sequence at {volume_addr}, moving on')
+            continue
+
         names_list.append(get_volume_name(volume_addr))
-        projections_loader = TiffSequenceReader(volume_addr)
         multi_bbox = get_two_crops(projections_loader, canny_alpha,
                                    rescale_coefficient=rescale_coefficient,
                                    threshold=threshold,
