@@ -162,7 +162,7 @@ def produce_files_with_thresholds(address_list, canny_alpha=0.2, rescale_coeffic
         path_to_save = os.path.abspath(os.path.join(volume_addr, '..', filename))
 
         if os.path.exists(path_to_save):
-            previously_done.append(volume_addr)
+            #previously_done.append(volume_addr)
             if not rewrite:
                 continue
 
